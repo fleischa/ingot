@@ -126,7 +126,7 @@ public class Program
 
 	private static void WriteFirelyLicense(FileInfo? license)
 	{
-		if (license != null && license.Exists)
+		if (license is { Exists: true })
 		{
 			File.Copy(license.FullName, Program.firelyLicenseFile, true);
 		}
