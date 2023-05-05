@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.CommandLine;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
@@ -7,34 +8,69 @@ namespace Ingot;
 public class Program
 {
 	private const string firelyLicenseFile = "firelyserver-license.json";
-	private const string firelyLicensePath = @$"C:\firely\{Program.firelyLicenseFile}";
 	private const string firelyAppSettingsFile = "appsettings.instance.json";
 	private const string dockerScriptFile = "docker_run.ps1";
 
-	public static async Task Main(string[] args)
+	public static async Task<int> Main(string[] args)
+	{
+		Option<IEnumerable<string>?> packagesOption = new("--packages", "List of packages containing conformance resources.")
+		{
+			AllowMultipleArgumentsPerToken = true
+		};
+
+		Option<FileInfo?> licenseOption = new("--license", "Firely Server license file.");
+		licenseOption.AddAlias("-l");
+
+		Option<string?> nameOption = new("--name", () => "firely.server", "Docker container name.");
+		nameOption.AddAlias("-n");
+
+		Option<int?> portOption = new("--port", () => 4080, "Firely Server host port.");
+		portOption.AddAlias("-p");
+
+		RootCommand rootCommand = new("Ingot - a tool for setting up Firely Server containers");
+		rootCommand.AddOption(packagesOption);
+		rootCommand.AddOption(nameOption);
+		rootCommand.AddOption(portOption);
+		rootCommand.AddOption(licenseOption);
+
+		rootCommand.SetHandler(async (packages, name, port, license) => { await Program.SetupContainer(packages, name!, port!.Value, license); },
+			packagesOption,
+			nameOption,
+			portOption,
+			licenseOption);
+
+		return await rootCommand.InvokeAsync(args);
+	}
+
+	private static async Task SetupContainer(IEnumerable<string>? packages, string name, int port, FileInfo? license)
 	{
 		DirectoryInfo importDirectory = new("vonk-import.R4");
 
-		if (!importDirectory.Exists)
+		if (importDirectory.Exists)
 		{
-			importDirectory.Create();
+			importDirectory.Delete(true);
 		}
 
-		foreach (string package in args)
-		{
-			string[] tokens = package.Split('@');
-			if (tokens.Length != 2)
-			{
-				throw new ArgumentException();
-			}
+		importDirectory.Create();
 
-			await Program.InstallPackage(tokens[0], tokens[1], importDirectory);
+		if (packages != null)
+		{
+			foreach (string package in packages)
+			{
+				string[] tokens = package.Split('@');
+				if (tokens.Length != 2)
+				{
+					throw new ArgumentException();
+				}
+
+				await Program.InstallPackage(tokens[0], tokens[1], importDirectory);
+			}
 		}
 
 		Program.CleanUpPackages(importDirectory);
-		Program.WriteFirelyLicense();
+		Program.WriteFirelyLicense(license);
 		await Program.WriteFirelyAppSettings();
-		await Program.WriteDockerScript();
+		await Program.WriteDockerScript(name, port);
 	}
 
 	private static async Task InstallPackage(string name, string version, DirectoryInfo importDirectory)
@@ -88,9 +124,12 @@ public class Program
 		}
 	}
 
-	private static void WriteFirelyLicense()
+	private static void WriteFirelyLicense(FileInfo? license)
 	{
-		File.Copy(Program.firelyLicensePath, Program.firelyLicenseFile, true);
+		if (license != null && license.Exists)
+		{
+			File.Copy(license.FullName, Program.firelyLicenseFile, true);
+		}
 	}
 
 	private static async Task WriteFirelyAppSettings()
@@ -111,7 +150,7 @@ public class Program
 		await JsonSerializer.SerializeAsync(stream, firelyAppSettings, jsonSerializerOptions);
 	}
 
-	private static async Task WriteDockerScript()
+	private static async Task WriteDockerScript(string name, int port)
 	{
 		if (File.Exists(Program.dockerScriptFile))
 		{
@@ -120,7 +159,7 @@ public class Program
 
 		StringBuilder builder = new();
 
-		builder.AppendLine("docker run -d -p 4080:4080 --name firely.server `");
+		builder.AppendLine($"docker run -d -p {port}:4080 --name {name} `");
 		builder.AppendLine($"-v ${{PWD}}/{Program.firelyLicenseFile}:/app/{Program.firelyLicenseFile} `");
 		builder.AppendLine($"-v ${{PWD}}/{Program.firelyAppSettingsFile}:/app/{Program.firelyAppSettingsFile} `");
 		builder.AppendLine("-v ${PWD}/vonk-import.R4:/app/vonk-import.R4 `");
