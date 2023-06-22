@@ -115,11 +115,7 @@ public class Program
 				}
 
 				DirectoryInfo? examplesDirectory = packageDirectory.EnumerateDirectories("examples").FirstOrDefault();
-
-				if (examplesDirectory != null)
-				{
-					examplesDirectory.Delete(true);
-				}
+				examplesDirectory?.Delete(true);
 			}
 		}
 	}
