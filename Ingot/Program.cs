@@ -94,7 +94,7 @@ public class Program
 
 		if (dependenciesDirectory == null)
 		{
-			throw new InvalidOperationException();
+			return;
 		}
 
 		DirectoryInfo[] packageRootDirectories = dependenciesDirectory.GetDirectories();
